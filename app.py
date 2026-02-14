@@ -3,14 +3,9 @@ import requests
 import base64
 from PIL import Image
 from geopy.geocoders import Nominatim
-from streamlit_folium import st_folium
-import folium
 import json
-from datetime import datetime
 
-# -----------------------------------
-# CONFIG
-# -----------------------------------
+# ---------------- CONFIG ----------------
 
 OPENROUTER_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -19,13 +14,11 @@ VISION_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
 REASON_MODEL = "openai/gpt-oss-120b:free"
 
 st.set_page_config(layout="wide")
-st.title("🌾 AI Agricultural Intelligence System")
+st.title("🌾 Smart Farming AI")
 
-# -----------------------------------
-# SAFE OPENROUTER CALL
-# -----------------------------------
+# ---------------- MODEL CALL ----------------
 
-def call_openrouter(model, messages):
+def call_model(model, prompt):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
         "Content-Type": "application/json"
@@ -33,150 +26,129 @@ def call_openrouter(model, messages):
 
     payload = {
         "model": model,
-        "messages": messages,
-        "temperature": 0.3
+        "messages": [{"role":"user","content":prompt}],
+        "temperature":0.3
     }
 
     try:
-        r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
+        r = requests.post(OPENROUTER_URL, headers=headers, json=payload)
         data = r.json()
-
         if "choices" in data:
             return data["choices"][0]["message"]["content"]
         else:
-            st.error("OpenRouter returned error")
-            st.json(data)
-            return None
+            return "Model error. Try again."
+    except:
+        return "Connection error."
 
-    except Exception as e:
-        st.error("OpenRouter request failed")
-        st.write(str(e))
-        return None
+# ---------------- LANGUAGE ----------------
 
-# -----------------------------------
-# LOCATION INPUT
-# -----------------------------------
+language = st.selectbox("Language", ["English","Hindi","Marathi"])
 
-st.header("📍 Farmer Location")
+def translate(text, target_lang):
+    if target_lang == "English":
+        return text
+    prompt = f"Translate this into {target_lang}:\n{text}"
+    return call_model(REASON_MODEL, prompt)
 
-location_mode = st.radio("Select Location Mode", ["Text Input", "Map"])
+# ---------------- MODE ----------------
 
-lat, lon = None, None
+mode = st.radio("Select Option", ["🌿 Detect Leaf Disease", "🌱 Get Farming Recommendation"])
 
-if location_mode == "Text Input":
-    location_text = st.text_input("Enter city / village name")
-    if location_text:
-        geolocator = Nominatim(user_agent="agri_app")
-        loc = geolocator.geocode(location_text)
+# ================= LEAF MODE =================
+
+if mode == "🌿 Detect Leaf Disease":
+
+    uploaded_file = st.file_uploader("Upload Leaf Image", type=["jpg","png","jpeg"])
+
+    if uploaded_file:
+
+        image = Image.open(uploaded_file)
+        st.image(image, width=300)
+
+        if st.button("Analyze"):
+
+            img_b64 = base64.b64encode(uploaded_file.getvalue()).decode()
+
+            vision_prompt = [
+                {
+                    "role":"user",
+                    "content":[
+                        {"type":"text","text":"Identify plant leaf species and condition. Give short bullet points."},
+                        {"type":"image_url","image_url":{"url":f"data:image/png;base64,{img_b64}"}}
+                    ]
+                }
+            ]
+
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "model": VISION_MODEL,
+                "messages": vision_prompt
+            }
+
+            r = requests.post(OPENROUTER_URL, headers=headers, json=payload)
+            data = r.json()
+
+            if "choices" in data:
+                result = data["choices"][0]["message"]["content"]
+                result = translate(result, language)
+                st.markdown(result)
+            else:
+                st.error("Vision model failed")
+
+# ================= RECOMMENDATION MODE =================
+
+if mode == "🌱 Get Farming Recommendation":
+
+    location_input = st.text_input("Enter village / city / district")
+
+    crop_type = st.selectbox("About", ["Plant Disease","Growing Crop"])
+
+    if location_input:
+
+        geolocator = Nominatim(user_agent="farm_app")
+        loc = geolocator.geocode(location_input)
+
         if loc:
+
             lat, lon = loc.latitude, loc.longitude
-            st.success(f"Location: {lat}, {lon}")
+
+            st.sidebar.header("📍 Location Data")
+            st.sidebar.write(f"Latitude: {lat}")
+            st.sidebar.write(f"Longitude: {lon}")
+
+            # WEATHER
+            weather_url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date=2023-01-01&end_date=2023-12-31&daily=temperature_2m_mean,precipitation_sum&timezone=auto"
+            weather = requests.get(weather_url).json()
+
+            # SOIL
+            soil_url = f"https://rest.isric.org/soilgrids/v2.0/properties/query?lat={lat}&lon={lon}&property=phh2o&property=soc&depth=0-5cm&value=mean"
+            soil = requests.get(soil_url).json()
+
+            st.sidebar.header("🌦 Weather Summary")
+            st.sidebar.write("• Avg temp & rainfall data collected")
+
+            st.sidebar.header("🌱 Soil Summary")
+            st.sidebar.write("• pH & organic carbon extracted")
+
+            if st.button("Generate Recommendation"):
+
+                base_prompt = f"""
+                Location: {location_input}
+                Weather data: {weather}
+                Soil data: {soil}
+                Task: {crop_type}
+
+                Give short bullet point farming advice.
+                """
+
+                response = call_model(REASON_MODEL, base_prompt)
+                response = translate(response, language)
+
+                st.markdown(response)
+
         else:
             st.error("Location not found")
-
-else:
-    m = folium.Map(location=[20, 78], zoom_start=4)
-    map_data = st_folium(m, height=400)
-
-    if map_data and map_data.get("last_clicked"):
-        lat = map_data["last_clicked"]["lat"]
-        lon = map_data["last_clicked"]["lng"]
-        st.success(f"Selected: {lat}, {lon}")
-
-# -----------------------------------
-# WEATHER API (1 Year Historical)
-# -----------------------------------
-
-def get_weather(lat, lon):
-    try:
-        url = f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}&start_date=2023-01-01&end_date=2023-12-31&daily=temperature_2m_mean,precipitation_sum&timezone=auto"
-        r = requests.get(url, timeout=20)
-        return r.json()
-    except:
-        return {"error": "Weather API failed"}
-
-# -----------------------------------
-# SOIL API
-# -----------------------------------
-
-def get_soil(lat, lon):
-    try:
-        url = f"https://rest.isric.org/soilgrids/v2.0/properties/query?lat={lat}&lon={lon}&property=phh2o&property=soc&depth=0-5cm&value=mean"
-        r = requests.get(url, timeout=20)
-        return r.json()
-    except:
-        return {"error": "Soil API failed"}
-
-# -----------------------------------
-# LEAF VISION
-# -----------------------------------
-
-st.header("🌿 Leaf Detection")
-
-uploaded_file = st.file_uploader("Upload Leaf Image", type=["jpg","jpeg","png"])
-
-leaf_result = None
-
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image)
-
-    if st.button("Analyze Leaf"):
-
-        with st.spinner("Analyzing leaf with Vision Model..."):
-
-            buffered = base64.b64encode(uploaded_file.getvalue()).decode()
-
-            messages = [{
-                "role": "user",
-                "content": [
-                    {"type":"text","text":"Identify the leaf species and disease condition."},
-                    {"type":"image_url","image_url":{"url":f"data:image/png;base64,{buffered}"}}
-                ]
-            }]
-
-            leaf_result = call_openrouter(VISION_MODEL, messages)
-
-            if leaf_result:
-                st.subheader("Leaf Analysis")
-                st.write(leaf_result)
-
-# -----------------------------------
-# FULL AGRI ANALYSIS
-# -----------------------------------
-
-if lat and lon and leaf_result:
-
-    st.header("🌦 Weather Data")
-    weather = get_weather(lat, lon)
-    st.json(weather)
-
-    st.header("🌱 Soil Data")
-    soil = get_soil(lat, lon)
-    st.json(soil)
-
-    st.header("🧠 Agricultural Recommendation")
-
-    combined_prompt = f"""
-    Location: {lat}, {lon}
-    Weather Data: {json.dumps(weather)}
-    Soil Data: {json.dumps(soil)}
-    Leaf Diagnosis: {leaf_result}
-
-    Provide:
-    - Crop recommendation
-    - Irrigation strategy
-    - Soil treatment plan
-    - Disease solution
-    - 5 year sustainability strategy
-    """
-
-    final_analysis = call_openrouter(
-        REASON_MODEL,
-        [{"role":"user","content":combined_prompt}]
-    )
-
-    if final_analysis:
-        st.write(final_analysis)
-
-st.caption("⚠️ Free models may rate limit or fail occasionally.")
