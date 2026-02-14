@@ -20,6 +20,9 @@ st.set_page_config(layout="wide")
 # ================= SAFE JSON =================
 
 def safe_json_loads(raw_text):
+    if not raw_text or not isinstance(raw_text, str):
+        return None
+
     try:
         return json.loads(raw_text)
     except:
@@ -30,6 +33,7 @@ def safe_json_loads(raw_text):
             except:
                 return None
         return None
+
 
 # ================= MODEL CALL =================
 
@@ -47,9 +51,24 @@ def call_model(model, messages):
 
     try:
         r = requests.post(OPENROUTER_URL, headers=headers, json=payload)
+
+        if r.status_code != 200:
+            st.error(f"API Error: {r.status_code}")
+            st.code(r.text)
+            return None
+
         data = r.json()
+
+        if "choices" not in data:
+            st.error("Model response malformed")
+            st.code(data)
+            return None
+
         return data["choices"][0]["message"]["content"]
-    except:
+
+    except Exception as e:
+        st.error("Connection error")
+        st.code(str(e))
         return None
 
 # ================= UI =================
@@ -308,3 +327,4 @@ if mode == "🌱 Farming Intelligence":
 
             for role, msg in st.session_state.chat_memory:
                 st.write(f"**{role}:** {msg}")
+
