@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import base64
 import json
+import re
 import pandas as pd
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -15,6 +16,20 @@ PRIMARY_MODEL = "openai/gpt-oss-120b:free"
 VISION_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
 
 st.set_page_config(layout="wide")
+
+# ================= SAFE JSON =================
+
+def safe_json_loads(raw_text):
+    try:
+        return json.loads(raw_text)
+    except:
+        match = re.search(r'\{.*\}|\[.*\]', raw_text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except:
+                return None
+        return None
 
 # ================= MODEL CALL =================
 
@@ -37,18 +52,16 @@ def call_model(model, messages):
     except:
         return None
 
-
 # ================= UI =================
 
-st.title("🌾 Smart Farming AI Agent")
+st.title("🌾 Smart Farming AI Research Agent")
 
 mode = st.sidebar.radio(
     "Select Mode",
     ["🌿 Leaf Disease Detection", "🌱 Farming Intelligence"]
 )
 
-location_input = st.sidebar.text_input("Enter Location (village/city/district)")
-
+location_input = st.sidebar.text_input("Enter Location")
 
 # =========================================================
 # 🌿 LEAF DISEASE DETECTION
@@ -93,9 +106,9 @@ if mode == "🌿 Leaf Disease Detection":
             ]
 
             result = call_model(VISION_MODEL, vision_messages)
+            parsed = safe_json_loads(result)
 
-            if result:
-                parsed = json.loads(result)
+            if parsed:
 
                 st.title(parsed["leaf_name"])
                 st.subheader(parsed["disease"])
@@ -105,7 +118,7 @@ if mode == "🌿 Leaf Disease Detection":
                 for s in parsed["solutions"]:
                     st.write("•", s)
 
-                # ================= DOCTOR SEARCH =================
+                # DOCTOR SEARCH
 
                 if location_input:
 
@@ -116,8 +129,7 @@ if mode == "🌿 Leaf Disease Detection":
                             Location: {location_input}
                             Disease: {parsed['disease']}
 
-                            Find nearby agriculture/plant doctors.
-                            Return JSON list:
+                            Return JSON list of nearby agriculture doctors:
                             [
                               {{
                                 "name":"",
@@ -131,12 +143,11 @@ if mode == "🌿 Leaf Disease Detection":
                     ]
 
                     doctors_raw = call_model(PRIMARY_MODEL, doctor_prompt)
+                    doctors = safe_json_loads(doctors_raw)
 
-                    if doctors_raw:
-                        doctors = json.loads(doctors_raw)
+                    if doctors:
 
                         st.markdown("## 👨‍⚕️ Nearby Experts")
-
                         cols = st.columns(3)
 
                         for i, doc in enumerate(doctors):
@@ -146,14 +157,13 @@ if mode == "🌿 Leaf Disease Detection":
                                 st.write(doc["education"])
                                 st.write("📞", doc["contact"])
 
-
 # =========================================================
-# 🌱 FARMING INTELLIGENCE AGENT
+# 🌱 FARMING INTELLIGENCE
 # =========================================================
 
 if mode == "🌱 Farming Intelligence":
 
-    if location_input and st.button("Generate Farming Report"):
+    if location_input and st.button("Generate Farming Research Report"):
 
         farming_prompt = [
             {
@@ -161,69 +171,117 @@ if mode == "🌱 Farming Intelligence":
                 "content": f"""
                 Location: {location_input}
 
-                Analyze this location for agriculture.
+                Perform deep agricultural analysis.
 
                 Return STRICT JSON:
+
                 {{
+                  "best_crop":"",
+
                   "weather":[
-                    {{"month":"Jan","temp":25,"rain":20}}
+                    {{
+                      "month":"Jan",
+                      "temp":0,
+                      "rain":0,
+                      "humidity":0
+                    }}
                   ],
-                  "crop_recommendation":[
-                    {{"month":"June","crop":"Rice","score":85}}
+
+                  "crop_scores":[
+                    {{
+                      "crop":"",
+                      "score":0
+                    }}
                   ],
-                  "soil":[
-                    {{"chemical":"Nitrogen","level":70}}
+
+                  "soil_macro":[
+                    {{"element":"Nitrogen","level":0}},
+                    {{"element":"Phosphorus","level":0}},
+                    {{"element":"Potassium","level":0}}
                   ],
-                  "description":"Detailed farming explanation"
+
+                  "soil_micro":[
+                    {{"element":"Zinc","level":0}},
+                    {{"element":"Iron","level":0}}
+                  ],
+
+                  "risks":[
+                    "risk 1"
+                  ],
+
+                  "yield_estimate":"",
+
+                  "conclusion":""
                 }}
                 """
             }
         ]
 
         response = call_model(PRIMARY_MODEL, farming_prompt)
+        parsed = safe_json_loads(response)
 
-        if response:
+        if parsed:
 
-            parsed = json.loads(response)
+            # TITLE
+            st.title(f"🌱 Recommended Crop: {parsed['best_crop']}")
 
-            # ================= WEATHER TABLE =================
-
-            st.markdown("## 🌦 Weather Overview")
+            # WEATHER TABLE
             weather_df = pd.DataFrame(parsed["weather"])
-            st.table(weather_df)
+            st.subheader("🌦 Weather Data")
+            st.dataframe(weather_df)
 
-            # ================= CROP GRAPH =================
+            # TEMP GRAPH
+            fig1, ax1 = plt.subplots()
+            ax1.plot(weather_df["month"], weather_df["temp"])
+            ax1.set_title("Temperature Trend")
+            st.pyplot(fig1)
 
-            st.markdown("## 🌱 Best Crop Months")
+            # RAIN GRAPH
+            fig2, ax2 = plt.subplots()
+            ax2.plot(weather_df["month"], weather_df["rain"])
+            ax2.set_title("Rainfall Trend")
+            st.pyplot(fig2)
 
-            crop_df = pd.DataFrame(parsed["crop_recommendation"])
+            # CROP SCORE GRAPH
+            crop_df = pd.DataFrame(parsed["crop_scores"])
+            fig3, ax3 = plt.subplots()
+            ax3.bar(crop_df["crop"], crop_df["score"])
+            ax3.set_title("Crop Suitability Score")
+            st.pyplot(fig3)
 
-            plt.figure()
-            plt.bar(crop_df["month"], crop_df["score"])
-            plt.xticks(rotation=45)
-            st.pyplot(plt)
+            # SOIL MACRO
+            macro_df = pd.DataFrame(parsed["soil_macro"])
+            fig4, ax4 = plt.subplots()
+            ax4.bar(macro_df["element"], macro_df["level"])
+            ax4.set_title("Soil Macro Nutrients")
+            st.pyplot(fig4)
 
-            # ================= SOIL GRAPH =================
+            # SOIL MICRO
+            micro_df = pd.DataFrame(parsed["soil_micro"])
+            fig5, ax5 = plt.subplots()
+            ax5.bar(micro_df["element"], micro_df["level"])
+            ax5.set_title("Soil Micro Nutrients")
+            st.pyplot(fig5)
 
-            st.markdown("## 🧪 Soil Composition")
+            # RISKS
+            st.subheader("⚠️ Farming Risks")
+            for r in parsed["risks"]:
+                st.write("•", r)
 
-            soil_df = pd.DataFrame(parsed["soil"])
+            # YIELD
+            st.subheader("📈 Estimated Yield")
+            st.info(parsed["yield_estimate"])
 
-            plt.figure()
-            plt.bar(soil_df["chemical"], soil_df["level"])
-            st.pyplot(plt)
+            # CONCLUSION
+            st.subheader("🧠 Final Agricultural Conclusion")
+            st.write(parsed["conclusion"])
 
-            # ================= DESCRIPTION =================
-
-            st.markdown("## 📘 Detailed Farming Advice")
-            st.write(parsed["description"])
-
-            # ================= CHAT WITH AI =================
+            # CHAT WITH AI
 
             if "chat_memory" not in st.session_state:
                 st.session_state.chat_memory = []
 
-            st.markdown("## 💬 Talk With AI Advisor")
+            st.subheader("💬 Talk With AI Advisor")
 
             user_question = st.text_input("Ask about your farm")
 
@@ -235,10 +293,10 @@ if mode == "🌱 Farming Intelligence":
                     {
                         "role": "user",
                         "content": f"""
-                        You are an agricultural expert.
+                        You are agricultural advisor.
                         Context Data: {context}
                         Farmer Question: {user_question}
-                        Provide precise, practical advice.
+                        Provide practical advice.
                         """
                     }
                 ]
