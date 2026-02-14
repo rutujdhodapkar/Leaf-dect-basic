@@ -8,7 +8,7 @@ from datetime import datetime
 # CONFIG
 # ---------------------------------------------------
 
-API_BASE = "https://3b51-103-249-243-47.ngrok-free.app"
+API_BASE = " https://bec6-103-249-243-47.ngrok-free.app"
 DETECT_URL = f"{API_BASE}/detect"
 
 st.set_page_config(
@@ -98,3 +98,4 @@ if uploaded_file:
             except Exception as e:
                 st.error("Connection Failed")
                 st.write(str(e))
+
