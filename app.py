@@ -37,7 +37,10 @@ def safe_json_loads(raw_text):
 
 # ================= MODEL CALL =================
 
-def call_model(model, messages):
+import time
+
+def call_model(model, messages, retries=3):
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
         "Content-Type": "application/json"
@@ -49,27 +52,35 @@ def call_model(model, messages):
         "temperature": 0.3
     }
 
-    try:
-        r = requests.post(OPENROUTER_URL, headers=headers, json=payload)
+    for attempt in range(retries):
 
-        if r.status_code != 200:
-            st.error(f"API Error: {r.status_code}")
-            st.code(r.text)
-            return None
+        try:
+            r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
 
-        data = r.json()
+            if r.status_code == 200:
+                data = r.json()
 
-        if "choices" not in data:
-            st.error("Model response malformed")
-            st.code(data)
-            return None
+                if "choices" in data:
+                    return data["choices"][0]["message"]["content"]
 
-        return data["choices"][0]["message"]["content"]
+                else:
+                    st.error("Malformed response")
+                    st.code(data)
+                    return None
 
-    except Exception as e:
-        st.error("Connection error")
-        st.code(str(e))
-        return None
+            else:
+                st.warning(f"Attempt {attempt+1}: {r.status_code}")
+                st.code(r.text)
+
+        except Exception as e:
+            st.warning(f"Attempt {attempt+1} failed")
+            st.code(str(e))
+
+        time.sleep(2)
+
+    st.error("Model unavailable after retries.")
+    return None
+
 
 # ================= UI =================
 
@@ -327,4 +338,5 @@ if mode == "🌱 Farming Intelligence":
 
             for role, msg in st.session_state.chat_memory:
                 st.write(f"**{role}:** {msg}")
+
 
