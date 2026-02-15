@@ -3,26 +3,17 @@ import requests
 import base64
 from PIL import Image
 import io
+import pandas as pd
 
 # ================= CONFIG ================= #
 
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "YOUR_OPENROUTER_KEY"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 VISION_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
 REASONING_MODEL = "deepseek/deepseek-r1-0528:free"
 
-# ================= UTILITIES ================= #
-
-def safe_extract_content(response_json):
-    if "choices" in response_json:
-        return response_json["choices"][0]["message"]["content"]
-
-    if "error" in response_json:
-        return f"Model Error: {response_json['error']}"
-
-    return f"Unknown response format: {response_json}"
-
+# ================= CORE FUNCTIONS ================= #
 
 def call_openrouter(messages, model):
     headers = {
@@ -30,31 +21,46 @@ def call_openrouter(messages, model):
         "Content-Type": "application/json"
     }
 
-    data = {
+    payload = {
         "model": model,
         "messages": messages
     }
 
-    try:
-        r = requests.post(OPENROUTER_URL, headers=headers, json=data, timeout=300)
-        return safe_extract_content(r.json())
-    except Exception as e:
-        return f"API Error: {e}"
+    r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=300)
+    response = r.json()
+
+    if "choices" in response:
+        return response["choices"][0]["message"]["content"]
+
+    if "error" in response:
+        return f"Model Error: {response['error']}"
+
+    return str(response)
 
 
 def encode_image(uploaded_file):
     image = Image.open(uploaded_file)
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG")
-    return base64.b64encode(buffered.getvalue()).decode()
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    return base64.b64encode(buffer.getvalue()).decode()
 
 
-def call_vision_model(image_base64, prompt):
+def detect_crop_and_disease(image_base64):
     messages = [
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": prompt},
+                {"type": "text", "text": """
+                Identify:
+                1. Crop name
+                2. Disease name
+                3. Short description (2 lines)
+
+                Respond in this format:
+                Crop:
+                Disease:
+                Description:
+                """},
                 {
                     "type": "image_url",
                     "image_url": {
@@ -64,131 +70,107 @@ def call_vision_model(image_base64, prompt):
             ]
         }
     ]
-
     return call_openrouter(messages, VISION_MODEL)
 
 
-def call_reasoning_model(system_prompt, user_prompt):
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-
-    return call_openrouter(messages, REASONING_MODEL)
+def reasoning_task(system, user):
+    return call_openrouter([
+        {"role": "system", "content": system},
+        {"role": "user", "content": user}
+    ], REASONING_MODEL)
 
 
 # ================= STREAMLIT UI ================= #
 
 st.set_page_config(layout="wide")
-st.title("🌾 Advanced Vision-Based Agricultural Intelligence System")
+st.title("🌾 Agricultural Intelligence System")
 
 location = st.text_input("Farm Location")
-uploaded_image = st.file_uploader("Upload Plant Image", type=["jpg", "jpeg", "png"])
-include_pests = st.checkbox("Include Pest Analysis")
+uploaded_image = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
 
-if st.button("Run Full Vision Pipeline"):
+if st.button("Analyze Crop"):
 
     if not uploaded_image:
-        st.error("Please upload an image.")
+        st.error("Upload an image first.")
         st.stop()
 
-    st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
     image_base64 = encode_image(uploaded_image)
 
-    # 1️⃣ Vision Detection
-    st.subheader("🪴 Plant & Disease Detection (Nemotron VL)")
-    disease = call_vision_model(
-        image_base64,
-        "Identify plant species and detect any disease. Provide structured output."
-    )
-    st.write(disease)
+    # -------- Vision Detection --------
+    result = detect_crop_and_disease(image_base64)
 
-    # 2️⃣ Weather
-    st.subheader("🌦 Weather Analysis (DeepSeek Reasoning)")
-    weather = call_reasoning_model(
-        "You are an agricultural climate analyst.",
-        f"Provide 1 year agricultural weather analysis for {location}"
-    )
-    st.write(weather)
+    lines = result.split("\n")
+    crop = ""
+    disease = ""
+    description = ""
 
-    # 3️⃣ Soil
-    st.subheader("🌱 Soil & Water Report")
-    soil = call_reasoning_model(
-        "You are a soil chemistry expert.",
-        f"Provide soil chemistry and groundwater report for {location}"
-    )
-    st.write(soil)
+    for line in lines:
+        if "Crop:" in line:
+            crop = line.replace("Crop:", "").strip()
+        if "Disease:" in line:
+            disease = line.replace("Disease:", "").strip()
+        if "Description:" in line:
+            description = line.replace("Description:", "").strip()
 
-    # 4️⃣ Environmental Explanation
-    st.subheader("🧬 Environmental Disease Explanation")
-    explanation = call_reasoning_model(
-        "You are a plant pathology scientist.",
+    # -------- Display Top Section --------
+    st.markdown(f"# {crop}")
+    st.markdown(f"## {disease}")
+
+    st.markdown("### Description")
+    st.write(description)
+
+    # -------- Weather Table --------
+    weather_data = reasoning_task(
+        "You are an agricultural meteorologist.",
         f"""
+        Provide 7-day agricultural weather forecast for {location}
+        Return strictly in CSV format:
+        Day,Temp(C),Humidity(%),Rainfall(mm),Wind(km/h)
+        """
+    )
+
+    try:
+        from io import StringIO
+        df = pd.read_csv(StringIO(weather_data))
+        st.markdown("### 7-Day Weather Forecast")
+        st.table(df)
+    except:
+        st.write(weather_data)
+
+    # -------- Disease Analysis --------
+    disease_analysis = reasoning_task(
+        "You are a plant pathologist.",
+        f"""
+        Crop: {crop}
         Disease: {disease}
-        Weather: {weather}
-        Soil: {soil}
 
-        Explain biological cause and environmental influence.
+        Provide:
+        - Cause
+        - Symptoms
+        - Spread Mechanism
+        - Risk Level (Low/Medium/High)
         """
     )
-    st.write(explanation)
 
-    # 5️⃣ Scientific Report
-    st.subheader("📄 Full Scientific Crop Report")
-    report = call_reasoning_model(
-        "You are a crop research scientist.",
-        f"Generate full scientific agricultural pathology report for: {disease}"
-    )
-    st.write(report)
+    st.markdown("### Disease Analysis")
+    st.write(disease_analysis)
 
-    # 6️⃣ Treatment Plan
-    st.subheader("💧 Fertilizer & Irrigation Plan")
-    plan = call_reasoning_model(
-        "You are an agricultural planner.",
+    # -------- Treatment Plan --------
+    treatment = reasoning_task(
+        "You are an agricultural treatment planner.",
         f"""
-        Based on this disease report:
-        {report}
+        Crop: {crop}
+        Disease: {disease}
 
-        Generate:
+        Provide:
         - Fertilizer schedule
-        - Weekly irrigation quantity
-        - Monthly timeline
-        - Preventive plan
+        - Irrigation plan
+        - Preventive measures
+        - Estimated recovery time
         """
     )
-    st.write(plan)
 
-    # 7️⃣ Pest Analysis
-    if include_pests:
-        st.subheader("🐛 Pest Risk Analysis")
-        pest = call_reasoning_model(
-            "You are an agricultural entomologist.",
-            f"Analyze pest risks for this crop condition: {disease}"
-        )
-        st.write(pest)
+    st.markdown("### Treatment Plan")
+    st.write(treatment)
 
-    # 8️⃣ Price Search
-    st.subheader("💰 Fertilizer Price Search")
-    prices = call_reasoning_model(
-        "You are an agricultural supply market analyst.",
-        f"Search fertilizer prices near {location} based on this plan: {plan}"
-    )
-    st.write(prices)
-
-    # 9️⃣ Delivery Planning
-    st.subheader("🚚 Delivery Planning & Cost")
-    delivery = call_reasoning_model(
-        "You are a logistics planner.",
-        f"Plan delivery logistics and total cost to {location} based on: {prices}"
-    )
-    st.write(delivery)
-
-    # 🔟 Doctor Search
-    st.subheader("👨‍⚕️ Agricultural Doctors Nearby")
-    doctors = call_reasoning_model(
-        "You are an agricultural consultant directory system.",
-        f"Find agricultural crop doctors near {location}. Include name, contact, and education."
-    )
-    st.write(doctors)
-
-    st.success("Full Vision-Based Agricultural Intelligence Completed.")
+    st.success("Analysis Complete.")
