@@ -3,11 +3,10 @@ import requests
 import base64
 from PIL import Image
 import io
-import os
 
 # ================= CONFIG ================= #
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KE")
+OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 VISION_MODEL = "mistralai/mistral-small-3.1-24b-instruct:free"
@@ -66,7 +65,6 @@ def call_vision_model(image_base64, prompt):
             ]
         }
     ]
-
     return call_openrouter(messages, VISION_MODEL)
 
 
@@ -81,19 +79,14 @@ include_pests = st.checkbox("Include Pest Analysis")
 
 if st.button("Run Full Vision Pipeline"):
 
-    if not OPENROUTER_API_KEY:
-        st.error("OPENROUTER_API_KEY not set in environment.")
-        st.stop()
-
     if not uploaded_image:
         st.error("Please upload an image.")
         st.stop()
 
     st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
-
     image_base64 = encode_image(uploaded_image)
 
-    # 1️⃣ Vision Detection
+    # 1️⃣ Plant & Disease Detection
     st.subheader("🪴 Plant & Disease Detection")
     disease = call_vision_model(
         image_base64,
@@ -101,7 +94,7 @@ if st.button("Run Full Vision Pipeline"):
     )
     st.write(disease)
 
-    # 2️⃣ Weather
+    # 2️⃣ Weather Analysis
     st.subheader("🌦 Weather Analysis (1 Year)")
     weather = call_openrouter([
         {"role": "system", "content": "You are an agricultural weather expert."},
@@ -109,7 +102,7 @@ if st.button("Run Full Vision Pipeline"):
     ], FAST_MODEL)
     st.write(weather)
 
-    # 3️⃣ Soil
+    # 3️⃣ Soil Report
     st.subheader("🌱 Soil & Water Report")
     soil = call_openrouter([
         {"role": "system", "content": "You are a soil chemistry expert."},
@@ -117,7 +110,7 @@ if st.button("Run Full Vision Pipeline"):
     ], FAST_MODEL)
     st.write(soil)
 
-    # 4️⃣ Environmental Explanation
+    # 4️⃣ Environmental Disease Explanation
     st.subheader("🧬 Environmental Disease Explanation")
     explanation = call_openrouter([
         {"role": "system", "content": "You are a plant pathology scientist."},
@@ -131,7 +124,7 @@ if st.button("Run Full Vision Pipeline"):
     ], HEAVY_MODEL)
     st.write(explanation)
 
-    # 5️⃣ Scientific Report
+    # 5️⃣ Full Scientific Report
     st.subheader("📄 Full Scientific Crop Report")
     report = call_openrouter([
         {"role": "system", "content": "You are a scientific crop researcher."},
@@ -165,7 +158,7 @@ if st.button("Run Full Vision Pipeline"):
         ], FAST_MODEL)
         st.write(pest)
 
-    # 8️⃣ Price Search
+    # 8️⃣ Fertilizer Price Search
     st.subheader("💰 Fertilizer Price Search")
     prices = call_openrouter([
         {"role": "system", "content": "You are an agricultural supply analyst."},
