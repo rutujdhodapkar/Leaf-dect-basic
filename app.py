@@ -10,12 +10,12 @@ import json
 OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-LOCAL_LLM_URL = "https://4ce5-2401-4900-7c88-d450-445d-cf33-80bb-fa11.ngrok-free.app/v1/chat/completions"
+LOCAL_LLM_URL = "https://288e-2401-4900-7c88-d450-445d-cf33-80bb-fa11.ngrok-free.app/v1/chat/completions"
 LOCAL_VISION_MODEL = "qwen/qwen2.5-vl-7b"
 
 MAIN_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
 HEAVY_MODEL = "openai/gpt-oss-120b:free"
-FAST_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"
+FAST_MODEL = "openai/gpt-oss-120b:free"
 
 # ================= SAFE CALLERS ================= #
 
@@ -209,3 +209,4 @@ if st.button("Run Full Vision Pipeline"):
     st.write(doctors)
 
     st.success("Full Vision-Based Agricultural Intelligence Completed.")
+
