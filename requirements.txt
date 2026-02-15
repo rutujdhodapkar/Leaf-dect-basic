@@ -6,3 +6,4 @@ folium
 geopy
 matplotlib
 pandas
+python-dateutil
