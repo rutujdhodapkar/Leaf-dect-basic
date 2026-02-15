@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>{{ txt.app_title }}</h1>
+<form method="post" enctype="multipart/form-data" class="card">
+  <label>{{ txt.farm_location }}</label>
+  <input name="location" required>
+  <label>{{ txt.upload }}</label>
+  <input type="file" name="leaf_image" accept="image/*">
+  <button>{{ txt.analyze_crop }}</button>
+</form>
+{% endblock %}
