@@ -1,9 +1,4 @@
-streamlit
+flask
 requests
 pillow
-streamlit-folium
-folium
-geopy
-matplotlib
-pandas
-python-dateutil
+reportlab
