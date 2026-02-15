@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ txt.chat }}</h2>
+<form method="post" class="card row">
+  <input name="query" placeholder="Ask agriculture question" required>
+  <button>{{ txt.send }}</button>
+</form>
+<div class="card">
+  {% for h in history %}
+    <p><b>Q:</b> {{ h.q }}</p>
+    <p><b>A:</b> {{ h.a }}</p>
+    <hr>
+  {% endfor %}
+</div>
+{% endblock %}

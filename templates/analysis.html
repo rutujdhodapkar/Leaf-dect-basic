@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ txt.analysis }}</h2>
+<div class="card">
+  <h3>Agent Pipeline</h3>
+  <p>Multi-modal fusion model (Vision + Weather + Soil + Time) running in background and generating actionable reports even if user navigates to other pages.</p>
+</div>
+<div class="grid">
+  {% for layer, items in capability_blocks.items() %}
+  <div class="card">
+    <h4>{{ layer }}</h4>
+    <ul>
+      {% for i in items %}<li>{{ i }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
