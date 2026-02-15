@@ -1,342 +1,194 @@
 import streamlit as st
 import requests
-import base64
 import json
-import re
+from datetime import datetime
 import pandas as pd
-import matplotlib.pyplot as plt
-from PIL import Image
 
-# ================= CONFIG =================
+# ================= CONFIG ================= #
 
-OPENROUTER_KEY = "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"
+OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-PRIMARY_MODEL = "openai/gpt-oss-120b:free"
-VISION_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
+LOCAL_LLM_URL = " https://e5dc-2401-4900-7c88-d450-445d-cf33-80bb-fa11.ngrok-free.app"
+LOCAL_MODEL = "deepseek/deepseek-r1-0528-qwen3-8b"
 
-st.set_page_config(layout="wide")
+MAIN_BRAIN = "qwen/qwen3-next-80b-a3b-instruct:free"
+HEAVY_MODEL = "openai/gpt-oss-120b:free"
+FAST_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free"
 
-# ================= SAFE JSON =================
+# ================= CORE CALLERS ================= #
 
-def safe_json_loads(raw_text):
-    if not raw_text or not isinstance(raw_text, str):
-        return None
-
-    try:
-        return json.loads(raw_text)
-    except:
-        match = re.search(r'\{.*\}|\[.*\]', raw_text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except:
-                return None
-        return None
-
-
-# ================= MODEL CALL =================
-
-import time
-
-def call_model(model, messages, retries=3):
-
+def call_openrouter(model, prompt):
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    payload = {
+    data = {
         "model": model,
-        "messages": messages,
-        "temperature": 0.3
+        "messages": [
+            {"role": "system", "content": "You are advanced agricultural intelligence system."},
+            {"role": "user", "content": prompt}
+        ]
     }
 
-    for attempt in range(retries):
+    r = requests.post(OPENROUTER_URL, headers=headers, json=data, timeout=300)
+    return r.json()["choices"][0]["message"]["content"]
 
-        try:
-            r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
 
-            if r.status_code == 200:
-                data = r.json()
+def call_local_model(prompt):
+    data = {
+        "model": LOCAL_MODEL,
+        "messages": [{"role": "user", "content": prompt}]
+    }
 
-                if "choices" in data:
-                    return data["choices"][0]["message"]["content"]
+    r = requests.post(LOCAL_LLM_URL, json=data, timeout=300)
+    return r.json()["choices"][0]["message"]["content"]
 
-                else:
-                    st.error("Malformed response")
-                    st.code(data)
-                    return None
 
-            else:
-                st.warning(f"Attempt {attempt+1}: {r.status_code}")
-                st.code(r.text)
-
-        except Exception as e:
-            st.warning(f"Attempt {attempt+1} failed")
-            st.code(str(e))
+# ================= DECISION ENGINE ================= #
 
-        time.sleep(2)
+def brain_decision(user_query):
+    prompt = f"""
+    Analyze this farm query:
+    {user_query}
 
-    st.error("Model unavailable after retries.")
-    return None
+    Decide:
+    - Weather duration needed (1 day, 3 months, 1 year, 5 years)
+    - Whether soil report needed
+    - Whether disease analysis needed
+    - Whether pest analysis needed
+    - Whether fertilizer pricing needed
+    - Whether doctor search needed
 
+    Output STRICT JSON.
+    """
+    return call_openrouter(MAIN_BRAIN, prompt)
 
-# ================= UI =================
 
-st.title("🌾 Smart Farming AI Research Agent")
-
-mode = st.sidebar.radio(
-    "Select Mode",
-    ["🌿 Leaf Disease Detection", "🌱 Farming Intelligence"]
-)
-
-location_input = st.sidebar.text_input("Enter Location")
+# ================= MODULES ================= #
 
-# =========================================================
-# 🌿 LEAF DISEASE DETECTION
-# =========================================================
+def weather_module(location, duration):
+    prompt = f"Provide detailed weather analysis for {location} for {duration}"
+    return call_openrouter(FAST_MODEL, prompt)
 
-if mode == "🌿 Leaf Disease Detection":
 
-    uploaded_file = st.file_uploader("Upload Leaf Image", type=["jpg","png","jpeg"])
+def soil_water_module(location):
+    prompt = f"Provide soil chemistry and groundwater analysis for {location}"
+    return call_openrouter(FAST_MODEL, prompt)
 
-    if uploaded_file:
 
-        image = Image.open(uploaded_file)
-        st.image(image, width=300)
+def plant_disease_detection(description):
+    prompt = f"Identify plant and disease from this description: {description}"
+    return call_local_model(prompt)
 
-        if st.button("Analyze Leaf"):
 
-            img_b64 = base64.b64encode(uploaded_file.getvalue()).decode()
+def disease_explanation(disease, weather, soil):
+    prompt = f"""
+    Disease: {disease}
+    Weather context: {weather}
+    Soil context: {soil}
+    Explain biological cause and how weather and soil influenced it.
+    """
+    return call_openrouter(HEAVY_MODEL, prompt)
 
-            vision_messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": """
-                            Analyze this plant leaf.
-                            Return ONLY JSON:
-                            {
-                              "leaf_name": "",
-                              "disease": "",
-                              "description": "",
-                              "solutions": []
-                            }
-                            """
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{img_b64}"}
-                        }
-                    ]
-                }
-            ]
-
-            result = call_model(VISION_MODEL, vision_messages)
-            parsed = safe_json_loads(result)
-
-            if parsed:
-
-                st.title(parsed["leaf_name"])
-                st.subheader(parsed["disease"])
-                st.write(parsed["description"])
-
-                st.markdown("### 🌿 Solutions")
-                for s in parsed["solutions"]:
-                    st.write("•", s)
-
-                # DOCTOR SEARCH
-
-                if location_input:
-
-                    doctor_prompt = [
-                        {
-                            "role": "user",
-                            "content": f"""
-                            Location: {location_input}
-                            Disease: {parsed['disease']}
-
-                            Return JSON list of nearby agriculture doctors:
-                            [
-                              {{
-                                "name":"",
-                                "education":"",
-                                "contact":"",
-                                "profile_pic":"https://randomuser.me/api/portraits/men/1.jpg"
-                              }}
-                            ]
-                            """
-                        }
-                    ]
-
-                    doctors_raw = call_model(PRIMARY_MODEL, doctor_prompt)
-                    doctors = safe_json_loads(doctors_raw)
-
-                    if doctors:
-
-                        st.markdown("## 👨‍⚕️ Nearby Experts")
-                        cols = st.columns(3)
-
-                        for i, doc in enumerate(doctors):
-                            with cols[i % 3]:
-                                st.image(doc["profile_pic"], width=120)
-                                st.subheader(doc["name"])
-                                st.write(doc["education"])
-                                st.write("📞", doc["contact"])
-
-# =========================================================
-# 🌱 FARMING INTELLIGENCE
-# =========================================================
-
-if mode == "🌱 Farming Intelligence":
-
-    if location_input and st.button("Generate Farming Research Report"):
-
-        farming_prompt = [
-            {
-                "role": "user",
-                "content": f"""
-                Location: {location_input}
-
-                Perform deep agricultural analysis.
-
-                Return STRICT JSON:
-
-                {{
-                  "best_crop":"",
-
-                  "weather":[
-                    {{
-                      "month":"Jan",
-                      "temp":0,
-                      "rain":0,
-                      "humidity":0
-                    }}
-                  ],
-
-                  "crop_scores":[
-                    {{
-                      "crop":"",
-                      "score":0
-                    }}
-                  ],
-
-                  "soil_macro":[
-                    {{"element":"Nitrogen","level":0}},
-                    {{"element":"Phosphorus","level":0}},
-                    {{"element":"Potassium","level":0}}
-                  ],
-
-                  "soil_micro":[
-                    {{"element":"Zinc","level":0}},
-                    {{"element":"Iron","level":0}}
-                  ],
-
-                  "risks":[
-                    "risk 1"
-                  ],
-
-                  "yield_estimate":"",
-
-                  "conclusion":""
-                }}
-                """
-            }
-        ]
-
-        response = call_model(PRIMARY_MODEL, farming_prompt)
-        parsed = safe_json_loads(response)
-
-        if parsed:
-
-            # TITLE
-            st.title(f"🌱 Recommended Crop: {parsed['best_crop']}")
-
-            # WEATHER TABLE
-            weather_df = pd.DataFrame(parsed["weather"])
-            st.subheader("🌦 Weather Data")
-            st.dataframe(weather_df)
-
-            # TEMP GRAPH
-            fig1, ax1 = plt.subplots()
-            ax1.plot(weather_df["month"], weather_df["temp"])
-            ax1.set_title("Temperature Trend")
-            st.pyplot(fig1)
-
-            # RAIN GRAPH
-            fig2, ax2 = plt.subplots()
-            ax2.plot(weather_df["month"], weather_df["rain"])
-            ax2.set_title("Rainfall Trend")
-            st.pyplot(fig2)
-
-            # CROP SCORE GRAPH
-            crop_df = pd.DataFrame(parsed["crop_scores"])
-            fig3, ax3 = plt.subplots()
-            ax3.bar(crop_df["crop"], crop_df["score"])
-            ax3.set_title("Crop Suitability Score")
-            st.pyplot(fig3)
-
-            # SOIL MACRO
-            macro_df = pd.DataFrame(parsed["soil_macro"])
-            fig4, ax4 = plt.subplots()
-            ax4.bar(macro_df["element"], macro_df["level"])
-            ax4.set_title("Soil Macro Nutrients")
-            st.pyplot(fig4)
-
-            # SOIL MICRO
-            micro_df = pd.DataFrame(parsed["soil_micro"])
-            fig5, ax5 = plt.subplots()
-            ax5.bar(micro_df["element"], micro_df["level"])
-            ax5.set_title("Soil Micro Nutrients")
-            st.pyplot(fig5)
-
-            # RISKS
-            st.subheader("⚠️ Farming Risks")
-            for r in parsed["risks"]:
-                st.write("•", r)
-
-            # YIELD
-            st.subheader("📈 Estimated Yield")
-            st.info(parsed["yield_estimate"])
-
-            # CONCLUSION
-            st.subheader("🧠 Final Agricultural Conclusion")
-            st.write(parsed["conclusion"])
-
-            # CHAT WITH AI
-
-            if "chat_memory" not in st.session_state:
-                st.session_state.chat_memory = []
-
-            st.subheader("💬 Talk With AI Advisor")
-
-            user_question = st.text_input("Ask about your farm")
-
-            if user_question:
-
-                context = json.dumps(parsed)
-
-                chat_prompt = [
-                    {
-                        "role": "user",
-                        "content": f"""
-                        You are agricultural advisor.
-                        Context Data: {context}
-                        Farmer Question: {user_question}
-                        Provide practical advice.
-                        """
-                    }
-                ]
-
-                chat_response = call_model(PRIMARY_MODEL, chat_prompt)
-
-                st.session_state.chat_memory.append(("Farmer", user_question))
-                st.session_state.chat_memory.append(("AI", chat_response))
-
-            for role, msg in st.session_state.chat_memory:
-                st.write(f"**{role}:** {msg}")
 
+def full_disease_report(disease):
+    return call_openrouter(
+        HEAVY_MODEL,
+        f"Generate full scientific crop pathology report for {disease}"
+    )
 
+
+def treatment_plan(report):
+    return call_openrouter(
+        HEAVY_MODEL,
+        f"Generate irrigation schedule, fertilizer plan, water quantity, and monthly calendar plan based on: {report}"
+    )
+
+
+def pest_analysis(description):
+    return call_openrouter(
+        FAST_MODEL,
+        f"Analyze pest or insect risk from this context: {description}"
+    )
+
+
+def fertilizer_price_search(plan, location):
+    return call_openrouter(
+        FAST_MODEL,
+        f"Search fertilizer names in this plan: {plan}. Give online prices near {location}"
+    )
+
+
+def delivery_planner(price_report, location):
+    return call_openrouter(
+        FAST_MODEL,
+        f"Plan full delivery logistics including total cost breakdown to {location}. Based on: {price_report}"
+    )
+
+
+def doctor_search(crop, location):
+    return call_openrouter(
+        FAST_MODEL,
+        f"Search online agricultural doctors for {crop} near {location}. Include name, contact, education."
+    )
+
+
+# ================= STREAMLIT UI ================= #
+
+st.set_page_config(layout="wide")
+st.title("🌾 Autonomous Farm Intelligence System")
+
+location = st.text_input("Farm Location")
+query = st.text_area("Describe crop / issue / symptoms")
+include_pests = st.checkbox("Include Pest Analysis")
+
+if st.button("Execute Full Pipeline"):
+
+    st.subheader("🧠 Brain Decision")
+    decision = brain_decision(query)
+    st.code(decision)
+
+    st.subheader("🌦 Weather Intelligence")
+    weather = weather_module(location, "1 year")
+    st.write(weather)
+
+    st.subheader("🌱 Soil & Water Intelligence")
+    soil = soil_water_module(location)
+    st.write(soil)
+
+    st.subheader("🪴 Plant & Disease Detection (Local Model)")
+    disease = plant_disease_detection(query)
+    st.write(disease)
+
+    st.subheader("🧬 Disease Explanation")
+    explanation = disease_explanation(disease, weather, soil)
+    st.write(explanation)
+
+    st.subheader("📄 Full Scientific Disease Report")
+    report = full_disease_report(disease)
+    st.write(report)
+
+    st.subheader("💧 Treatment & Irrigation Planning")
+    plan = treatment_plan(report)
+    st.write(plan)
+
+    if include_pests:
+        st.subheader("🐛 Pest Analysis")
+        pest = pest_analysis(query)
+        st.write(pest)
+
+    st.subheader("💰 Fertilizer Price Search")
+    prices = fertilizer_price_search(plan, location)
+    st.write(prices)
+
+    st.subheader("🚚 Delivery Planning")
+    delivery = delivery_planner(prices, location)
+    st.write(delivery)
+
+    st.subheader("👨‍⚕️ Local Crop Doctors")
+    doctors = doctor_search("crop", location)
+    st.write(doctors)
+
+    st.success("Full Autonomous Agricultural Intelligence Completed.")
