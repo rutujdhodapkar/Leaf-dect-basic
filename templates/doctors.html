@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ txt.doctors }}</h2>
+<form method="post" class="card">
+  <input name="crop" placeholder="{{ txt.crop_name }}" required>
+  <input name="requirement" placeholder="{{ txt.specific_requirement }}" required>
+  <div class="row">
+    <button name="action" value="search">{{ txt.search_products }}</button>
+    <button name="action" value="show_all">{{ txt.show_all }}</button>
+  </div>
+</form>
+{% if all_items %}
+<div class="card">{% for item in all_items %}<p>{{ item }}</p>{% endfor %}</div>
+{% endif %}
+{% endblock %}

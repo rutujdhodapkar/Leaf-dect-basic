@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ txt.price_prediction }}</h2>
+<form method="post" class="grid2">
+  <input type="number" step="0.01" name="seed_cost" placeholder="Seed cost" required>
+  <input type="number" step="0.01" name="fertilizer_cost" placeholder="Fertilizer cost" required>
+  <input type="number" step="0.01" name="labor_cost" placeholder="Labor cost" required>
+  <input type="number" step="0.01" name="irrigation_cost" placeholder="Irrigation cost" required>
+  <input type="number" step="0.01" name="misc_cost" placeholder="Misc cost" required>
+  <input type="number" step="0.01" name="yield_quintal" placeholder="Expected yield" required>
+  <input type="number" step="0.01" name="market_price" placeholder="Market price per quintal" required>
+  <button>Calculate</button>
+</form>
+{% if result %}
+<div class="card">
+  <p><b>Total Cost:</b> {{ result.total_cost }}</p>
+  <p><b>Expected Revenue:</b> {{ result.expected_revenue }}</p>
+  <p><b>Estimated Gain:</b> {{ result.gain }}</p>
+</div>
+{% endif %}
+{% endblock %}

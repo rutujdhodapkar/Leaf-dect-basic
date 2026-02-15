@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ txt.app_title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="theme-{{ session.get('theme','light') }}">
+<div class="layout">
+  <aside class="sidebar">
+    <form method="post" action="{{ url_for('set_language') }}">
+      <label>Language</label>
+      <select name="language" onchange="this.form.submit()">
+        {% for lang in languages %}
+        <option value="{{ lang }}" {% if lang == language %}selected{% endif %}>{{ lang }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    <nav>
+      <a href="{{ url_for('home') }}">{{ txt.home }}</a>
+      <a href="{{ url_for('chat') }}">{{ txt.chat }}</a>
+      <a href="{{ url_for('shops') }}">{{ txt.shops }}</a>
+      <a href="{{ url_for('doctors') }}">{{ txt.doctors }}</a>
+      <a href="{{ url_for('analysis') }}">{{ txt.analysis }}</a>
+      <a href="{{ url_for('price_prediction') }}">{{ txt.price_prediction }}</a>
+      <a href="{{ url_for('contact') }}">{{ txt.contact }}</a>
+      <a href="{{ url_for('export_chat') }}">{{ txt.export_chat }}</a>
+    </nav>
+
+    <div class="reports">
+      <h4>Reports</h4>
+      {% if reports %}
+        {% for r in reports[:8] %}
+          <details>
+            <summary>{{ r.title }} ({{ r.created }})</summary>
+            <pre>{{ r.content }}</pre>
+          </details>
+        {% endfor %}
+      {% else %}
+        <p>No reports yet</p>
+      {% endif %}
+    </div>
+
+    <div class="profile">
+      <img src="{{ profile_photo }}" alt="profile">
+      <div>{{ username }}</div>
+      <details>
+        <summary>{{ txt.settings }}</summary>
+        <div class="settings-box">
+          <a href="{{ url_for('set_theme', theme_name='light') }}">{{ txt.theme }}: Light</a>
+          <a href="{{ url_for('set_theme', theme_name='dark') }}">{{ txt.theme }}: Dark</a>
+          <a href="{{ url_for('logout') }}">{{ txt.logout }}</a>
+          <a href="#">{{ txt.more }}</a>
+        </div>
+      </details>
+    </div>
+  </aside>
+
+  <main>
+    <div class="status">{{ txt.agent }}: {{ agent_status }}</div>
+    <div class="topnav">
+      <a href="{{ url_for('home') }}">{{ txt.home }}</a>
+      <a href="{{ url_for('chat') }}">{{ txt.chat }}</a>
+      <a href="{{ url_for('shops') }}">{{ txt.shops }}</a>
+      <a href="{{ url_for('doctors') }}">{{ txt.doctors }}</a>
+      <a href="{{ url_for('contact') }}">{{ txt.contact }}</a>
+    </div>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>
