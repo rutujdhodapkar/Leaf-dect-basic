@@ -9,9 +9,8 @@ import io
 OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-VISION_MODEL = "mistralai/mistral-small-3.1-24b-instruct:free"
-FAST_MODEL = "mistralai/mistral-small-3.1-24b-instruct:free"
-HEAVY_MODEL = "mistralai/mistral-small-3.1-24b-instruct:free"
+VISION_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
+REASONING_MODEL = "deepseek/deepseek-r1-0528:free"
 
 # ================= UTILITIES ================= #
 
@@ -65,13 +64,23 @@ def call_vision_model(image_base64, prompt):
             ]
         }
     ]
+
     return call_openrouter(messages, VISION_MODEL)
+
+
+def call_reasoning_model(system_prompt, user_prompt):
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+
+    return call_openrouter(messages, REASONING_MODEL)
 
 
 # ================= STREAMLIT UI ================= #
 
 st.set_page_config(layout="wide")
-st.title("🌾 Vision-Based Agricultural Intelligence System")
+st.title("🌾 Advanced Vision-Based Agricultural Intelligence System")
 
 location = st.text_input("Farm Location")
 uploaded_image = st.file_uploader("Upload Plant Image", type=["jpg", "jpeg", "png"])
@@ -86,100 +95,100 @@ if st.button("Run Full Vision Pipeline"):
     st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
     image_base64 = encode_image(uploaded_image)
 
-    # 1️⃣ Plant & Disease Detection
-    st.subheader("🪴 Plant & Disease Detection")
+    # 1️⃣ Vision Detection
+    st.subheader("🪴 Plant & Disease Detection (Nemotron VL)")
     disease = call_vision_model(
         image_base64,
-        "Identify plant type and any disease. Be specific and structured."
+        "Identify plant species and detect any disease. Provide structured output."
     )
     st.write(disease)
 
-    # 2️⃣ Weather Analysis
-    st.subheader("🌦 Weather Analysis (1 Year)")
-    weather = call_openrouter([
-        {"role": "system", "content": "You are an agricultural weather expert."},
-        {"role": "user", "content": f"Provide 1 year agricultural weather analysis for {location}"}
-    ], FAST_MODEL)
+    # 2️⃣ Weather
+    st.subheader("🌦 Weather Analysis (DeepSeek Reasoning)")
+    weather = call_reasoning_model(
+        "You are an agricultural climate analyst.",
+        f"Provide 1 year agricultural weather analysis for {location}"
+    )
     st.write(weather)
 
-    # 3️⃣ Soil Report
+    # 3️⃣ Soil
     st.subheader("🌱 Soil & Water Report")
-    soil = call_openrouter([
-        {"role": "system", "content": "You are a soil chemistry expert."},
-        {"role": "user", "content": f"Provide soil chemistry and groundwater report for {location}"}
-    ], FAST_MODEL)
+    soil = call_reasoning_model(
+        "You are a soil chemistry expert.",
+        f"Provide soil chemistry and groundwater report for {location}"
+    )
     st.write(soil)
 
-    # 4️⃣ Environmental Disease Explanation
+    # 4️⃣ Environmental Explanation
     st.subheader("🧬 Environmental Disease Explanation")
-    explanation = call_openrouter([
-        {"role": "system", "content": "You are a plant pathology scientist."},
-        {"role": "user", "content": f"""
+    explanation = call_reasoning_model(
+        "You are a plant pathology scientist.",
+        f"""
         Disease: {disease}
         Weather: {weather}
         Soil: {soil}
 
         Explain biological cause and environmental influence.
-        """}
-    ], HEAVY_MODEL)
+        """
+    )
     st.write(explanation)
 
-    # 5️⃣ Full Scientific Report
+    # 5️⃣ Scientific Report
     st.subheader("📄 Full Scientific Crop Report")
-    report = call_openrouter([
-        {"role": "system", "content": "You are a scientific crop researcher."},
-        {"role": "user", "content": f"Generate full scientific agricultural pathology report for: {disease}"}
-    ], HEAVY_MODEL)
+    report = call_reasoning_model(
+        "You are a crop research scientist.",
+        f"Generate full scientific agricultural pathology report for: {disease}"
+    )
     st.write(report)
 
     # 6️⃣ Treatment Plan
     st.subheader("💧 Fertilizer & Irrigation Plan")
-    plan = call_openrouter([
-        {"role": "system", "content": "You are an agricultural planner."},
-        {"role": "user", "content": f"""
+    plan = call_reasoning_model(
+        "You are an agricultural planner.",
+        f"""
         Based on this disease report:
         {report}
 
         Generate:
         - Fertilizer schedule
-        - Water quantity per week
+        - Weekly irrigation quantity
         - Monthly timeline
         - Preventive plan
-        """}
-    ], HEAVY_MODEL)
+        """
+    )
     st.write(plan)
 
     # 7️⃣ Pest Analysis
     if include_pests:
         st.subheader("🐛 Pest Risk Analysis")
-        pest = call_openrouter([
-            {"role": "system", "content": "You are an agricultural entomologist."},
-            {"role": "user", "content": f"Analyze pest risks for this crop condition: {disease}"}
-        ], FAST_MODEL)
+        pest = call_reasoning_model(
+            "You are an agricultural entomologist.",
+            f"Analyze pest risks for this crop condition: {disease}"
+        )
         st.write(pest)
 
-    # 8️⃣ Fertilizer Price Search
+    # 8️⃣ Price Search
     st.subheader("💰 Fertilizer Price Search")
-    prices = call_openrouter([
-        {"role": "system", "content": "You are an agricultural supply analyst."},
-        {"role": "user", "content": f"Search fertilizer prices near {location} based on this plan: {plan}"}
-    ], FAST_MODEL)
+    prices = call_reasoning_model(
+        "You are an agricultural supply market analyst.",
+        f"Search fertilizer prices near {location} based on this plan: {plan}"
+    )
     st.write(prices)
 
     # 9️⃣ Delivery Planning
     st.subheader("🚚 Delivery Planning & Cost")
-    delivery = call_openrouter([
-        {"role": "system", "content": "You are a logistics planner."},
-        {"role": "user", "content": f"Plan delivery logistics and total cost to {location} based on: {prices}"}
-    ], FAST_MODEL)
+    delivery = call_reasoning_model(
+        "You are a logistics planner.",
+        f"Plan delivery logistics and total cost to {location} based on: {prices}"
+    )
     st.write(delivery)
 
     # 🔟 Doctor Search
     st.subheader("👨‍⚕️ Agricultural Doctors Nearby")
-    doctors = call_openrouter([
-        {"role": "system", "content": "You are an agricultural consultant directory system."},
-        {"role": "user", "content": f"Find agricultural crop doctors near {location}. Include name, contact, and education."}
-    ], FAST_MODEL)
+    doctors = call_reasoning_model(
+        "You are an agricultural consultant directory system.",
+        f"Find agricultural crop doctors near {location}. Include name, contact, and education."
+    )
     st.write(doctors)
 
     st.success("Full Vision-Based Agricultural Intelligence Completed.")
