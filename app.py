@@ -3,6 +3,8 @@ import requests
 import base64
 from PIL import Image
 import io
+import json
+import os
 import pandas as pd
 
 # ================= CONFIG ================= #
@@ -13,7 +15,9 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 VISION_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
 REASONING_MODEL = "deepseek/deepseek-r1-0528:free"
 
-# ================= CORE FUNCTIONS ================= #
+USER_DB = "users.json"
+
+# ================= API ================= #
 
 def call_openrouter(messages, model):
     headers = {
@@ -21,157 +25,201 @@ def call_openrouter(messages, model):
         "Content-Type": "application/json"
     }
 
-    payload = {
-        "model": model,
-        "messages": messages
-    }
-
-    r = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=300)
+    payload = {"model": model, "messages": messages}
+    r = requests.post(OPENROUTER_URL, headers=headers, json=payload)
     response = r.json()
 
     if "choices" in response:
         return response["choices"][0]["message"]["content"]
 
-    if "error" in response:
-        return f"Model Error: {response['error']}"
-
     return str(response)
 
+# ================= TRANSLATIONS ================= #
 
-def encode_image(uploaded_file):
-    image = Image.open(uploaded_file)
-    buffer = io.BytesIO()
-    image.save(buffer, format="JPEG")
-    return base64.b64encode(buffer.getvalue()).decode()
+translations = {
+    "English": {
+        "home": "Home",
+        "chat": "Chat",
+        "shops": "Shops",
+        "contact": "Contact Us",
+        "login": "Login",
+        "username": "Username",
+        "password": "Password",
+        "upload": "Upload Leaf Image",
+        "analyze": "Analyze Crop"
+    },
+    "Hindi": {
+        "home": "होम",
+        "chat": "चैट",
+        "shops": "दुकान",
+        "contact": "संपर्क करें",
+        "login": "लॉगिन",
+        "username": "उपयोगकर्ता नाम",
+        "password": "पासवर्ड",
+        "upload": "पत्ता अपलोड करें",
+        "analyze": "विश्लेषण करें"
+    },
+    "Marathi": {
+        "home": "मुख्यपृष्ठ",
+        "chat": "चॅट",
+        "shops": "दुकान",
+        "contact": "संपर्क",
+        "login": "लॉगिन",
+        "username": "वापरकर्ता नाव",
+        "password": "पासवर्ड",
+        "upload": "पान अपलोड करा",
+        "analyze": "विश्लेषण करा"
+    }
+}
 
+# ================= SESSION INIT ================= #
 
-def detect_crop_and_disease(image_base64):
-    messages = [
-        {
+if "language" not in st.session_state:
+    st.session_state.language = None
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+# ================= LANGUAGE SELECT ================= #
+
+if not st.session_state.language:
+    st.title("🌍 Select Language")
+    lang = st.selectbox("Language", ["English", "Hindi", "Marathi"])
+    if st.button("Continue"):
+        st.session_state.language = lang
+        st.rerun()
+
+lang_text = translations[st.session_state.language]
+
+# ================= LOGIN SYSTEM ================= #
+
+if not os.path.exists(USER_DB):
+    with open(USER_DB, "w") as f:
+        json.dump({}, f)
+
+with open(USER_DB, "r") as f:
+    users = json.load(f)
+
+if not st.session_state.logged_in:
+
+    st.title(lang_text["login"])
+    username = st.text_input(lang_text["username"])
+    password = st.text_input(lang_text["password"], type="password")
+
+    if st.button("Login"):
+        if username in users and users[username] == password:
+            st.session_state.logged_in = True
+            st.success("Login Successful")
+            st.rerun()
+        else:
+            users[username] = password
+            with open(USER_DB, "w") as f:
+                json.dump(users, f)
+            st.session_state.logged_in = True
+            st.success("Account Created")
+            st.rerun()
+
+# ================= NAVIGATION ================= #
+
+menu = st.radio(
+    "",
+    [lang_text["home"], lang_text["chat"], lang_text["shops"], lang_text["contact"]],
+    horizontal=True
+)
+
+# ================= HOME ================= #
+
+if menu == lang_text["home"]:
+
+    st.title("🌾 Agricultural Intelligence")
+
+    location = st.text_input("Farm Location")
+    uploaded_image = st.file_uploader(lang_text["upload"], type=["jpg", "png"])
+
+    if st.button(lang_text["analyze"]):
+
+        if not uploaded_image:
+            st.error("Upload image.")
+            st.stop()
+
+        image = Image.open(uploaded_image)
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        image_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+        # Vision describe
+        desc = call_openrouter([{
             "role": "user",
             "content": [
-                {"type": "text", "text": """
-                Identify:
-                1. Crop name
-                2. Disease name
-                3. Short description (2 lines)
-
-                Respond in this format:
-                Crop:
-                Disease:
-                Description:
-                """},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{image_base64}"
-                    }
-                }
+                {"type": "text", "text": "Describe this leaf in detail."},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
             ]
-        }
-    ]
-    return call_openrouter(messages, VISION_MODEL)
+        }], VISION_MODEL)
 
+        # Diagnose
+        diagnosis = call_openrouter([
+            {"role": "system", "content": "You are plant pathologist."},
+            {"role": "user", "content": f"Based on: {desc} Identify Crop and Disease."}
+        ], REASONING_MODEL)
 
-def reasoning_task(system, user):
-    return call_openrouter([
-        {"role": "system", "content": system},
-        {"role": "user", "content": user}
-    ], REASONING_MODEL)
+        st.markdown("## Result")
+        st.write(diagnosis)
 
+# ================= CHAT ================= #
 
-# ================= STREAMLIT UI ================= #
+elif menu == lang_text["chat"]:
 
-st.set_page_config(layout="wide")
-st.title("🌾 Agricultural Intelligence System")
+    st.title("💬 AI Chat")
+    user_query = st.text_input("Ask anything about agriculture")
 
-location = st.text_input("Farm Location")
-uploaded_image = st.file_uploader("Upload Leaf Image", type=["jpg", "jpeg", "png"])
+    if st.button("Send"):
+        response = call_openrouter([
+            {"role": "system", "content": "You are agricultural assistant."},
+            {"role": "user", "content": user_query}
+        ], REASONING_MODEL)
 
-if st.button("Analyze Crop"):
+        st.write(response)
 
-    if not uploaded_image:
-        st.error("Upload an image first.")
-        st.stop()
+# ================= SHOPS ================= #
 
-    image_base64 = encode_image(uploaded_image)
+elif menu == lang_text["shops"]:
 
-    # -------- Vision Detection --------
-    result = detect_crop_and_disease(image_base64)
+    st.title("🛒 Fertilizer Shop Search")
 
-    lines = result.split("\n")
-    crop = ""
-    disease = ""
-    description = ""
+    crop = st.text_input("Crop Name")
+    req = st.text_input("Specific Requirement")
 
-    for line in lines:
-        if "Crop:" in line:
-            crop = line.replace("Crop:", "").strip()
-        if "Disease:" in line:
-            disease = line.replace("Disease:", "").strip()
-        if "Description:" in line:
-            description = line.replace("Description:", "").strip()
+    if st.button("Search Products"):
 
-    # -------- Display Top Section --------
-    st.markdown(f"# {crop}")
-    st.markdown(f"## {disease}")
+        result = call_openrouter([
+            {"role": "system", "content": "You are fertilizer market analyst."},
+            {"role": "user",
+             "content": f"""
+             Find best fertilizers online for crop: {crop}
+             Requirement: {req}
+             Provide:
+             - Product Name
+             - NPK Ratio
+             - Approx Price
+             - Usage Reason
+             - Online availability
+             """}
+        ], REASONING_MODEL)
 
-    st.markdown("### Description")
-    st.write(description)
+        st.write(result)
 
-    # -------- Weather Table --------
-    weather_data = reasoning_task(
-        "You are an agricultural meteorologist.",
-        f"""
-        Provide 7-day agricultural weather forecast for {location}
-        Return strictly in CSV format:
-        Day,Temp(C),Humidity(%),Rainfall(mm),Wind(km/h)
-        """
-    )
+# ================= CONTACT ================= #
 
-    try:
-        from io import StringIO
-        df = pd.read_csv(StringIO(weather_data))
-        st.markdown("### 7-Day Weather Forecast")
-        st.table(df)
-    except:
-        st.write(weather_data)
+elif menu == lang_text["contact"]:
 
-    # -------- Disease Analysis --------
-    disease_analysis = reasoning_task(
-        "You are a plant pathologist.",
-        f"""
-        Crop: {crop}
-        Disease: {disease}
+    st.title("📞 Contact Us")
 
-        Provide:
-        - Cause
-        - Symptoms
-        - Spread Mechanism
-        - Risk Level (Low/Medium/High)
-        """
-    )
-
-    st.markdown("### Disease Analysis")
-    st.write(disease_analysis)
-
-    # -------- Treatment Plan --------
-    treatment = reasoning_task(
-        "You are an agricultural treatment planner.",
-        f"""
-        Crop: {crop}
-        Disease: {disease}
-
-        Provide:
-        - Fertilizer schedule
-        - Irrigation plan
-        - Preventive measures
-        - Estimated recovery time
-        """
-    )
-
-    st.markdown("### Treatment Plan")
-    st.write(treatment)
-
-    st.success("Analysis Complete.")
-
+    st.markdown("""
+    **Name:** Rutuj Dhodapkar  
+    **Email:** rutujdhodapkar@gmail.com  
+    **Username:** rutujdhodapkar  
+    **Portfolio:** https://rutujdhodapkar.vercel.app/  
+    **Specialization:** Advanced AI, Deep Learning, Machine Learning, Big Data  
+    **Location:** Los Angeles  
+    """)
