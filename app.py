@@ -7,7 +7,7 @@ import pandas as pd
 
 # ================= CONFIG ================= #
 
-OPENROUTER_API_KEY = "YOUR_OPENROUTER_KEY"
+OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 VISION_MODEL = "nvidia/nemotron-nano-12b-v2-vl:free"
@@ -174,3 +174,4 @@ if st.button("Analyze Crop"):
     st.write(treatment)
 
     st.success("Analysis Complete.")
+
