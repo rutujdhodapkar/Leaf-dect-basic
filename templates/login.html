@@ -1,0 +1,13 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"></head>
+<body>
+<div class="login-box">
+  <h2>{{ txt.login }}</h2>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <input name="username" placeholder="{{ txt.username }}" required>
+    <input name="password" type="password" placeholder="{{ txt.password }}" required>
+    <button type="submit">{{ txt.login_button }}</button>
+  </form>
+</div>
+</body></html>
